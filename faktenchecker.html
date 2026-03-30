@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--
+  CSP: erlaubt nur Anthropic API + Google Fonts.
+  'unsafe-inline' für Scripts ist nötig bei Single-File-Apps ohne Build-System.
+  Für Produktion: Scripts externalisieren + Nonce/Hash verwenden.
+-->
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'unsafe-inline' https://fonts.googleapis.com;
+           font-src https://fonts.gstatic.com;
+           connect-src https://api.anthropic.com;
+           script-src 'unsafe-inline';">
+<title>KI-Faktenchecker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Inter:wght@400;500&display=swap');
+
+  /* ── Light theme ── */
+  :root {
+    --bg: #F5F2EB; --surface: #FDFBF7; --border: #DDD9CF;
+    --text: #1A1915; --muted: #6B6860; --accent: #2A4A2E;
+    --accent-light: #EAF3DE; --red: #A32D2D; --red-light: #FCEBEB;
+    --amber: #854F0B; --amber-light: #FAEEDA; --green: #3B6D11;
+    --green-light: #EAF3DE; --blue: #185FA5; --blue-light: #E6F1FB;
+    --gray: #5F5E5A; --gray-light: #F1EFE8;
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      --bg: #1A1917; --surface: #232220; --border: #3A3835;
+      --text: #E8E4DC; --muted: #9B9890; --accent: #5A8A3E;
+      --accent-light: #1C2E18; --red: #D46060; --red-light: #2D1818;
+      --amber: #C48A30; --amber-light: #2D2110; --green: #6DB040;
+      --green-light: #1A2D10; --blue: #4A8FD4; --blue-light: #0D1E2D;
+      --gray: #8A8880; --gray-light: #252420;
+    }
+  }
+  html[data-theme="dark"] {
+    --bg: #1A1917; --surface: #232220; --border: #3A3835;
+    --text: #E8E4DC; --muted: #9B9890; --accent: #5A8A3E;
+    --accent-light: #1C2E18; --red: #D46060; --red-light: #2D1818;
+    --amber: #C48A30; --amber-light: #2D2110; --green: #6DB040;
+    --green-light: #1A2D10; --blue: #4A8FD4; --blue-light: #0D1E2D;
+    --gray: #8A8880; --gray-light: #252420;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 3rem 1.5rem 4rem;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  /* ── Focus visible (Tastatur-Navigation) ── */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center; margin-bottom: 2.5rem;
+    position: relative; width: 100%; max-width: 680px;
+  }
+  .header-actions { position: absolute; right: 0; top: 0; display: flex; gap: 6px; }
+  .icon-btn {
+    background: none; border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.4rem 0.6rem;
+    cursor: pointer; font-size: 14px; color: var(--muted);
+    transition: all 0.15s; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--surface); color: var(--text); border-color: var(--muted); }
+  .icon-btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+  header .eyebrow {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 0.75rem;
+  }
+  header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 400; line-height: 1.15;
+  }
+  header h1 em { font-style: italic; color: var(--accent); }
+  header p {
+    margin-top: 0.75rem; font-size: 14px; color: var(--muted);
+    max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.6;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 2rem; width: 100%; max-width: 680px;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .card + .card { margin-top: 1.25rem; }
+  label {
+    display: block; font-size: 12px; font-family: 'DM Mono', monospace;
+    color: var(--muted); letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 0.6rem;
+  }
+
+  /* ── Comparison grid ── */
+  .comparison-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1.25rem; width: 100%; max-width: 1400px;
+  }
+  @media (max-width: 900px) { .comparison-grid { grid-template-columns: 1fr; max-width: 680px; } }
+  .comparison-grid .card { max-width: none; }
+  .comparison-label {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .comparison-badge {
+    width: 18px; height: 18px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: #fff; flex-shrink: 0;
+  }
+  .comparison-badge.a { background: var(--blue); }
+  .comparison-badge.b { background: var(--amber); }
+
+  /* ── API Key area ── */
+  .api-key-area {
+    width: 100%; max-width: 680px; margin-bottom: 1.25rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .api-key-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.85rem 1.5rem; cursor: pointer; user-select: none;
+  }
+  .api-key-header:hover { background: var(--bg); }
+  .api-key-header-left { display: flex; align-items: center; gap: 8px; }
+  .api-key-badge {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .api-key-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--amber); flex-shrink: 0;
+  }
+  .api-key-status-dot.ok { background: var(--green); }
+  .api-key-chevron { font-size: 11px; color: var(--muted); transition: transform 0.2s; }
+  .api-key-area.open .api-key-chevron { transform: rotate(180deg); }
+  .api-key-body {
+    display: none; padding: 0 1.5rem 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  .api-key-area.open .api-key-body { display: block; }
+  .api-key-row { display: flex; gap: 8px; align-items: center; margin-top: 0.85rem; }
+  .api-key-row input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.55rem 0.85rem;
+    font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+    outline: none; transition: border-color 0.15s;
+  }
+  .api-key-row input:focus { border-color: var(--accent); }
+  .api-key-row input::placeholder { color: var(--muted); opacity: 0.6; }
+  .api-key-save-btn {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 0.55rem 1rem; font-size: 13px;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    white-space: nowrap; transition: opacity 0.15s;
+  }
+  .api-key-save-btn:hover { opacity: 0.85; }
+  .api-key-hint { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+  .api-key-security-note {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    color: var(--amber); margin-top: 8px; padding: 6px 10px;
+    background: var(--amber-light); border-radius: 6px; line-height: 1.6;
+  }
+
+  /* ── Textarea ── */
+  textarea {
+    width: 100%; min-height: 120px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.9rem 1rem; font-family: 'Inter', sans-serif;
+    font-size: 15px; color: var(--text); resize: vertical;
+    outline: none; transition: border-color 0.15s, background 0.2s; line-height: 1.6;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); opacity: 0.7; }
+  textarea.invalid { border-color: var(--red); }
+
+  .textarea-meta {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-top: 5px; min-height: 18px;
+  }
+  .char-count { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); }
+  .char-count.warn { color: var(--amber); }
+  .char-count.error { color: var(--red); }
+  .shortcut-hint { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); opacity: 0.55; }
+
+  /* ── Examples ── */
+  .examples-section { margin-top: 1rem; }
+  .examples-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .examples-title {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  .examples-add-btn {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    color: var(--accent); cursor: pointer; padding: 2px 6px;
+    border-radius: 4px; transition: all 0.15s; border: none; background: none;
+  }
+  .examples-add-btn:hover { background: var(--accent-light); }
+  .examples {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .example-chip {
+    font-size: 12px; padding: 4px 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 20px; cursor: pointer; color: var(--muted);
+    transition: all 0.15s; font-family: 'Inter', sans-serif;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .example-chip:hover {
+    background: var(--accent-light); border-color: var(--accent); color: var(--accent);
+  }
+  .example-chip .chip-del {
+    font-size: 11px; opacity: 0.5; cursor: pointer;
+    margin-left: 2px; line-height: 1;
+  }
+  .example-chip .chip-del:hover { opacity: 1; color: var(--red); }
+  .add-example-row {
+    display: none; gap: 6px; margin-top: 8px; align-items: center;
+  }
+  .add-example-row.visible { display: flex; }
+  .add-example-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.45rem 0.75rem;
+    font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text);
+    outline: none; transition: border-color 0.15s;
+  }
+  .add-example-input:focus { border-color: var(--accent); }
+  .add-example-confirm {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 0.45rem 0.85rem;
+    font-size: 12px; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+  }
+  .add-example-confirm:hover { opacity: 0.85; }
+
+  /* ── Rate limit banner ── */
+  .rate-limit-banner {
+    font-size: 12px; font-family: 'DM Mono', monospace;
+    color: var(--amber); margin-top: 0.5rem;
+    display: none;
+  }
+  .rate-limit-banner.visible { display: block; }
+
+  /* ── Buttons ── */
+  .btn-row { display: flex; gap: 10px; margin-top: 1.25rem; align-items: center; flex-wrap: wrap; }
+  button.check-btn {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 10px; padding: 0.7rem 1.5rem; font-size: 14px;
+    font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    display: flex; align-items: center; gap: 7px;
+  }
+  button.check-btn:hover:not(:disabled) { opacity: 0.88; }
+  button.check-btn:active:not(:disabled) { transform: scale(0.98); }
+  button.check-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.clear-btn {
+    background: none; border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.7rem 1rem; font-size: 14px;
+    color: var(--muted); font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: all 0.15s;
+  }
+  button.clear-btn:hover { background: var(--bg); border-color: var(--muted); color: var(--text); }
+  button.abort-btn {
+    background: none; border: 1px solid var(--red);
+    border-radius: 10px; padding: 0.7rem 1rem; font-size: 14px;
+    color: var(--red); font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: all 0.15s; display: none;
+  }
+  button.abort-btn:hover { background: var(--red-light); }
+  .retry-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 0.75rem; background: none;
+    border: 1px solid var(--red); border-radius: 8px;
+    padding: 0.4rem 0.85rem; font-size: 12px;
+    font-family: 'DM Mono', monospace; color: var(--red);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .retry-btn:hover { background: var(--red-light); }
+  .retry-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.6s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result card ── */
+  #result-card, #result-card-b { display: none; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Verdict ── */
+  .verdict-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem;
+  }
+  .verdict-icon { font-size: 22px; flex-shrink: 0; }
+  .verdict-label { font-family: 'Instrument Serif', serif; font-size: 1.35rem; font-weight: 400; }
+  .verdict-sublabel {
+    font-size: 12px; font-family: 'DM Mono', monospace;
+    letter-spacing: 0.06em; text-transform: uppercase; margin-top: 1px; opacity: 0.8;
+  }
+  .verdict-true    { background: var(--green-light); }
+  .verdict-true    .verdict-label, .verdict-true .verdict-sublabel { color: var(--green); }
+  .verdict-false   { background: var(--red-light); }
+  .verdict-false   .verdict-label, .verdict-false .verdict-sublabel { color: var(--red); }
+  .verdict-partial { background: var(--amber-light); }
+  .verdict-partial .verdict-label, .verdict-partial .verdict-sublabel { color: var(--amber); }
+  .verdict-uncertain { background: var(--blue-light); }
+  .verdict-uncertain .verdict-label, .verdict-uncertain .verdict-sublabel { color: var(--blue); }
+  .verdict-opinion { background: var(--gray-light); }
+  .verdict-opinion .verdict-label, .verdict-opinion .verdict-sublabel { color: var(--gray); }
+
+  /* ── Confidence ── */
+  .confidence-row { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; }
+  .conf-label {
+    font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted);
+    white-space: nowrap; text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .conf-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; }
+  .conf-bar-fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+  .conf-pct { font-size: 13px; font-family: 'DM Mono', monospace; color: var(--text); min-width: 36px; text-align: right; }
+
+  /* ── Sections ── */
+  .section-title {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 0.5rem;
+  }
+  .analysis-text { font-size: 15px; line-height: 1.75; color: var(--text); }
+
+  /* ── Claims ── */
+  .claims-list { margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  .claim-item { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; }
+  .claim-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
+  .claim-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+  .claim-text { font-size: 14px; font-weight: 500; line-height: 1.5; }
+  .claim-note { font-size: 13px; color: var(--muted); margin-left: 16px; line-height: 1.5; }
+  .dot-green { background: var(--green); }
+  .dot-red   { background: var(--red); }
+  .dot-amber { background: var(--amber); }
+  .dot-blue  { background: var(--blue); }
+  .dot-gray  { background: var(--gray); }
+
+  .divider { height: 1px; background: var(--border); margin: 1.5rem 0; }
+  .sources-note { font-size: 12px; color: var(--muted); font-style: italic; line-height: 1.6; }
+
+  /* ── Result actions ── */
+  .result-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 1rem; flex-wrap: wrap; }
+  .action-btn {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.4rem 0.75rem; font-size: 12px; font-family: 'DM Mono', monospace;
+    color: var(--muted); cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .action-btn:hover { background: var(--bg); border-color: var(--muted); color: var(--text); }
+  .action-btn.success { border-color: var(--green); color: var(--green); }
+  .action-btn.failure { border-color: var(--red); color: var(--red); }
+
+  /* ── Loading ── */
+  .loading-state {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 1rem; padding: 2rem 0; color: var(--muted); font-size: 14px;
+  }
+  .loading-dots span {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--accent);
+    margin: 0 2px; animation: bounce 1.2s infinite ease-in-out; opacity: 0.4;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+    40%           { transform: scale(1);   opacity: 1; }
+  }
+  .stream-preview { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); opacity: 0.7; }
+
+  /* ── Error ── */
+  .error-box {
+    background: var(--red-light); border: 1px solid var(--red);
+    border-radius: 10px; padding: 1rem; font-size: 14px;
+    color: var(--red); line-height: 1.6;
+  }
+  .error-box strong { display: block; margin-bottom: 4px; font-size: 15px; }
+
+  /* ── History filter ── */
+  .filter-bar {
+    display: flex; gap: 5px; flex-wrap: wrap;
+    padding: 0.5rem 0; margin-bottom: 0.5rem;
+  }
+  .filter-chip {
+    font-size: 10px; font-family: 'DM Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3px 10px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); transition: all 0.15s;
+  }
+  .filter-chip:hover { border-color: var(--muted); color: var(--text); }
+  .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ── History ── */
+  .history-section { width: 100%; max-width: 680px; margin-top: 1.25rem; display: none; }
+  .history-section.visible { display: block; }
+  .history-header {
+    display: flex; align-items: center;
+    justify-content: space-between; padding: 0.75rem 0; user-select: none;
+  }
+  .history-title {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); display: flex; align-items: center; gap: 8px;
+  }
+  .history-count {
+    background: var(--border); border-radius: 999px;
+    padding: 1px 7px; font-size: 10px; color: var(--muted);
+  }
+  .history-clear {
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    color: var(--muted); cursor: pointer; padding: 2px 6px;
+    border-radius: 4px; transition: all 0.15s;
+  }
+  .history-clear:hover { color: var(--red); background: var(--red-light); }
+  .history-list { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+  .history-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0.75rem 1rem;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; transition: border-color 0.15s;
+  }
+  .history-item:hover { border-color: var(--accent); }
+  .history-verdict-badge {
+    font-size: 10px; font-family: 'DM Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  }
+  .badge-true      { background: var(--green-light); color: var(--green); }
+  .badge-false     { background: var(--red-light);   color: var(--red); }
+  .badge-partial   { background: var(--amber-light); color: var(--amber); }
+  .badge-uncertain { background: var(--blue-light);  color: var(--blue); }
+  .badge-opinion   { background: var(--gray-light);  color: var(--gray); }
+  .history-text { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-conf { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .history-time { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Footer ── */
+  footer { margin-top: 3rem; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.8; max-width: 480px; }
+  footer strong { color: var(--text); }
+
+  /* ── Print styles ── */
+  @media print {
+    body { background: #fff !important; color: #000 !important; padding: 0; }
+    header, .api-key-area, .card:first-of-type, .history-section,
+    .result-actions, footer, .abort-btn, .clear-btn, .check-btn,
+    .header-actions, .examples-section { display: none !important; }
+    #result-card { display: block !important; border: none !important; box-shadow: none !important; max-width: 100% !important; }
+    .verdict-bar, .claim-item { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .conf-bar-fill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page { margin: 2cm; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-actions">
+    <button class="icon-btn" id="ui-lang-toggle" title="Switch to English" aria-label="Switch UI language">🇩🇪</button>
+    <button class="icon-btn" id="lang-toggle" title="Sprache: Auto-Erkennung" aria-label="Spracheinstellung umschalten" aria-pressed="true">🌐</button>
+    <button class="icon-btn" id="comparison-toggle" title="Vergleichsmodus" aria-label="Vergleichsmodus umschalten" aria-pressed="false">⇄</button>
+    <button class="icon-btn" id="theme-toggle" title="Dark/Light Mode" aria-label="Farbschema umschalten">☀</button>
+  </div>
+  <div class="eyebrow" id="eyebrow-text">KI-gestützte Analyse</div>
+  <h1>Fakten<em>checker</em></h1>
+  <p id="header-tagline">Gib eine Behauptung, einen Nachrichtenartikel-Ausschnitt oder eine Aussage ein — die KI analysiert den Wahrheitsgehalt.</p>
+</header>
+
+<!-- API Key (collapsible) -->
+<div class="api-key-area" id="api-key-area">
+  <div class="api-key-header" id="api-key-header" role="button" tabindex="0"
+       aria-expanded="false" aria-controls="api-key-body">
+    <div class="api-key-header-left">
+      <div class="api-key-status-dot" id="api-key-dot" aria-hidden="true"></div>
+      <span class="api-key-badge">Anthropic API-Schlüssel</span>
+    </div>
+    <span class="api-key-chevron" aria-hidden="true">▼</span>
+  </div>
+  <div class="api-key-body" id="api-key-body">
+    <div class="api-key-row">
+      <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"
+             aria-label="Anthropic API-Schlüssel eingeben">
+      <button class="api-key-save-btn" id="api-key-save-btn">Speichern</button>
+    </div>
+    <div class="api-key-hint" id="api-key-hint"></div>
+    <div class="api-key-security-note" role="note">
+      ⚠ Schlüssel wird unverschlüsselt im Browser-localStorage gespeichert.
+      Nur auf privaten, vertrauenswürdigen Geräten verwenden.
+    </div>
+  </div>
+</div>
+
+<!-- Normal mode: single input -->
+<div id="single-mode">
+  <div class="card">
+    <label for="claim-input">Behauptung oder Text eingeben</label>
+    <textarea id="claim-input"
+              placeholder="z. B. »Die Erde wird im Jahr 2100 um 4 Grad wärmer sein.« oder einen beliebigen Textausschnitt einfügen …"
+              aria-label="Behauptung oder Text eingeben"
+              aria-describedby="char-count shortcut-hint"></textarea>
+    <div class="textarea-meta">
+      <span class="char-count" id="char-count" aria-live="polite" aria-atomic="true"></span>
+      <span class="shortcut-hint" id="shortcut-hint" aria-hidden="true"></span>
+    </div>
+    <div class="examples-section">
+      <div class="examples-header">
+        <span class="examples-title">Beispiele</span>
+        <button class="examples-add-btn" id="add-example-btn" aria-label="Eigenes Beispiel hinzufügen">+ Eigenes</button>
+      </div>
+      <div class="examples" id="examples-list" role="group" aria-label="Beispiel-Behauptungen"></div>
+      <div class="add-example-row" id="add-example-row">
+        <input class="add-example-input" id="add-example-input" type="text" placeholder="Eigene Behauptung eingeben …" maxlength="120">
+        <button class="add-example-confirm" id="add-example-confirm">Hinzufügen</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="check-btn" id="check-btn" aria-describedby="shortcut-hint" aria-busy="false">
+        <span id="btn-icon" aria-hidden="true">&#10003;</span>
+        <span id="btn-text">Jetzt prüfen</span>
+        <div class="spinner" id="spinner" aria-hidden="true"></div>
+      </button>
+      <button class="clear-btn" id="clear-btn">Leeren</button>
+      <button class="abort-btn" id="abort-btn" aria-label="Analyse abbrechen">Abbrechen</button>
+    </div>
+    <div class="rate-limit-banner" id="rate-limit-banner" role="status" aria-live="polite"></div>
+  </div>
+  <div class="card" id="result-card" aria-live="polite" aria-atomic="true">
+    <div id="result-inner"></div>
+  </div>
+</div>
+
+<!-- Comparison mode: two columns -->
+<div id="comparison-mode" style="display:none; width:100%">
+  <div class="comparison-grid">
+    <div>
+      <div class="card">
+        <div class="comparison-label"><span class="comparison-badge a">A</span> <span id="comp-label-a">Behauptung A</span></div>
+        <textarea id="claim-input-a" placeholder="Erste Behauptung …" aria-label="Erste Behauptung"></textarea>
+        <div class="textarea-meta">
+          <span class="char-count" id="char-count-a" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="card" id="result-card-a" style="display:none; margin-top:1.25rem" aria-live="polite">
+        <div id="result-inner-a"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="comparison-label"><span class="comparison-badge b">B</span> <span id="comp-label-b">Behauptung B</span></div>
+        <textarea id="claim-input-b" placeholder="Zweite Behauptung …" aria-label="Zweite Behauptung"></textarea>
+        <div class="textarea-meta">
+          <span class="char-count" id="char-count-b" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="card" id="result-card-b" style="display:none; margin-top:1.25rem" aria-live="polite">
+        <div id="result-inner-b"></div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex; gap:10px; margin-top:1.25rem; justify-content:center; flex-wrap:wrap">
+    <button class="check-btn" id="compare-btn">
+      <span aria-hidden="true">⇄</span>
+      <span id="compare-btn-text">Beide prüfen</span>
+      <div class="spinner" id="compare-spinner" aria-hidden="true"></div>
+    </button>
+    <button class="clear-btn" id="compare-clear-btn">Leeren</button>
+    <button class="abort-btn" id="compare-abort-btn" aria-label="Analyse abbrechen">Abbrechen</button>
+  </div>
+</div>
+
+<!-- History -->
+<div class="history-section" id="history-section" aria-label="Analyse-Verlauf">
+  <div class="history-header">
+    <div class="history-title">
+      Verlauf <span class="history-count" id="history-count" aria-label="Anzahl Einträge">0</span>
+    </div>
+    <span class="history-clear" id="history-clear-btn" role="button" tabindex="0"
+          aria-label="Gesamten Verlauf löschen">Löschen</span>
+  </div>
+  <div class="filter-bar" id="filter-bar" role="group" aria-label="Verlauf filtern"></div>
+  <div class="history-list" id="history-list" role="list"></div>
+</div>
+
+<footer id="footer-note">
+  <strong>Hinweis:</strong> Dieses Tool nutzt KI zur Analyse und ersetzt keine journalistische Recherche.
+  KI kann irren — bei wichtigen Entscheidungen immer Originalquellen prüfen.
+</footer>
+
+<script>
+'use strict';
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const CONFIG = Object.freeze({
+  MODEL:              'claude-sonnet-4-6',
+  MAX_TOKENS:         1500,
+  TEMPERATURE:        0,
+  TIMEOUT_MS:         60_000,
+  HISTORY_MAX:        20,
+  CHAR_WARN:          2000,
+  CHAR_MAX:           8000,
+  LOADING_INTERVAL:   2500,
+  COPY_FEEDBACK_MS:   2000,
+  CONF_ANIM_DELAY:    80,
+  RATE_LIMIT_MS:      3000,
+  RETRY_BASE_MS:      1000,
+  RETRY_MAX:          3,
+  SHARE_MAX_CHARS:    12000,
+});
+
+const DEFAULT_EXAMPLES_DE = Object.freeze([
+  'Impfstoffe enthalten Mikrochips',
+  'Deutschland hat 2023 mehr Strom aus Erneuerbaren erzeugt als aus Kohle',
+  '5G-Masten verbreiten Viren',
+  'Die Titanic sank am 15. April 1912',
+  'KI wird in 10 Jahren alle Jobs ersetzen',
+]);
+
+const DEFAULT_EXAMPLES_EN = Object.freeze([
+  'Vaccines contain microchips',
+  'The Great Wall of China is visible from space',
+  '5G towers spread viruses',
+  'The Titanic sank on April 15, 1912',
+  'AI will replace all jobs within 10 years',
+]);
+
+// ── i18n strings ─────────────────────────────────────────────────────────────
+const STRINGS = {
+  de: {
+    eyebrow:           'KI-gestützte Analyse',
+    tagline:           'Gib eine Behauptung, einen Nachrichtenartikel-Ausschnitt oder eine Aussage ein — die KI analysiert den Wahrheitsgehalt.',
+    apiKeyBadge:       'Anthropic API-Schlüssel',
+    apiKeySave:        'Speichern',
+    apiKeyOk:          '✓ Schlüssel gespeichert',
+    apiKeyMissing:     '⚠ Kein API-Schlüssel — bitte eingeben und speichern',
+    apiKeySecNote:     '⚠ Schlüssel wird unverschlüsselt im Browser-localStorage gespeichert. Nur auf privaten, vertrauenswürdigen Geräten verwenden.',
+    inputLabel:        'Behauptung oder Text eingeben',
+    inputPlaceholder:  'z. B. »Die Erde wird im Jahr 2100 um 4 Grad wärmer sein.« oder einen beliebigen Textausschnitt einfügen …',
+    examplesTitle:     'Beispiele',
+    addExampleBtn:     '+ Eigenes',
+    addExamplePh:      'Eigene Behauptung eingeben …',
+    addExampleConfirm: 'Hinzufügen',
+    checkBtn:          'Jetzt prüfen',
+    checkingBtn:       'Analysiere …',
+    clearBtn:          'Leeren',
+    abortBtn:          'Abbrechen',
+    abortLabel:        'Analyse abbrechen',
+    compLabelA:        'Behauptung A',
+    compLabelB:        'Behauptung B',
+    compPhA:           'Erste Behauptung …',
+    compPhB:           'Zweite Behauptung …',
+    bothCheck:         'Beide prüfen',
+    historyTitle:      'Verlauf',
+    historyDelete:     'Löschen',
+    historyAll:        'Alle',
+    historyAriaSection:'Analyse-Verlauf',
+    historyAriaDelete: 'Gesamten Verlauf löschen',
+    historyAriaFilter: 'Verlauf filtern',
+    confidence:        'Konfidenz',
+    analysis:          'Analyse',
+    contextSection:    'Kontext & Einschränkungen',
+    sourcesNote:       'Analyse basiert auf dem Wissensstand der KI — keine Quellenprüfung.',
+    copyBtn:           '⎘ Kopieren',
+    mdBtn:             '⬇ Markdown',
+    pdfBtn:            '🖨 PDF',
+    shareBtn:          '🔗 Teilen',
+    copied:            '✓ Kopiert',
+    linkCopied:        '✓ Link kopiert',
+    tooLong:           '✗ Zu lang',
+    copyErr:           '✗ Fehler',
+    loadingMsgs:       ['KI analysiert die Behauptung …','Fakten werden abgewogen …','Kontext wird einbezogen …','Analyse wird verfeinert …','Nuancen werden berücksichtigt …'],
+    errInvalidInput:   'Ungültige Eingabe',
+    errNoKey:          'API-Schlüssel fehlt',
+    errNoKeyMsg:       'Bitte oben eintragen.',
+    errApiKeyAlert:    'Bitte zuerst API-Schlüssel eingeben.',
+    errTimeout:        'Zeitüberschreitung',
+    errAborted:        'Abgebrochen',
+    errAbortedMsg:     'Die Analyse wurde abgebrochen.',
+    errGeneric:        'Fehler',
+    errUnknown:        'Unbekannter Fehler.',
+    errEmpty:          'Bitte gib eine Behauptung oder einen Text ein.',
+    errTooShort:       'Der Text ist zu kurz. Bitte mehr eingeben.',
+    retryBtn:          '↻ Erneut versuchen',
+    uiLangBtn:         '🇩🇪',
+    uiLangTitle:       'Switch to English',
+    langAutoTitle:     'Analysesprache: Auto (Eingabe-Sprache)',
+    langForcedTitle:   'Analysesprache: Deutsch',
+    footerBold:        'Hinweis:',
+    footerText:        ' Dieses Tool nutzt KI zur Analyse und ersetzt keine journalistische Recherche. KI kann irren — bei wichtigen Entscheidungen immer Originalquellen prüfen.',
+    verdictExport:     'URTEIL',
+    claimsExport:      'EINZELBEHAUPTUNGEN',
+    contextExport:     'KONTEXT',
+    mdTitle:           '# Faktenchecker-Ergebnis',
+    mdVerdictKey:      '**Urteil:**',
+    mdConfKey:         '**Konfidenz:**',
+    mdClaimsHeader:    '## Einzelbehauptungen',
+    mdContextHeader:   '## Kontext',
+    mdFooter:          '_KI-gestützte Analyse — keine journalistische Recherche._',
+    historyLocale:     'de-DE',
+    fallbackStatus:    'fraglich',
+    fallbackVerdict:   'NICHT VERIFIZIERBAR',
+    retryCountdown:    s => `↻ Erneut versuchen (${s}s)`,
+    rateLimit:         s => `⏱ Bitte ${s}s warten …`,
+    charCountFn:       n => `${n.toLocaleString('de-DE')} Zeichen`,
+    timeoutMsg:        s => `Keine Antwort nach ${s}s. Bitte erneut versuchen.`,
+    errMaxChars:       (len, max) => `Text ist zu lang (${len} Zeichen). Maximum: ${max.toLocaleString('de-DE')} Zeichen.`,
+    streamFn:          n => `${n.toLocaleString('de-DE')} Zeichen …`,
+    shortcutFn:        mac => mac ? '⌘+Enter zum Prüfen' : 'Ctrl+Enter zum Prüfen',
+  },
+  en: {
+    eyebrow:           'AI-powered analysis',
+    tagline:           'Enter a claim, news excerpt, or statement — the AI analyses its truthfulness.',
+    apiKeyBadge:       'Anthropic API Key',
+    apiKeySave:        'Save',
+    apiKeyOk:          '✓ Key saved',
+    apiKeyMissing:     '⚠ No API key — please enter and save',
+    apiKeySecNote:     '⚠ Key is stored unencrypted in browser localStorage. Only use on private, trusted devices.',
+    inputLabel:        'Enter a claim or text',
+    inputPlaceholder:  'e.g. "The Earth will be 4°C warmer by 2100." or paste any text excerpt …',
+    examplesTitle:     'Examples',
+    addExampleBtn:     '+ Custom',
+    addExamplePh:      'Enter your own claim …',
+    addExampleConfirm: 'Add',
+    checkBtn:          'Check now',
+    checkingBtn:       'Analysing …',
+    clearBtn:          'Clear',
+    abortBtn:          'Cancel',
+    abortLabel:        'Cancel analysis',
+    compLabelA:        'Claim A',
+    compLabelB:        'Claim B',
+    compPhA:           'First claim …',
+    compPhB:           'Second claim …',
+    bothCheck:         'Check both',
+    historyTitle:      'History',
+    historyDelete:     'Delete',
+    historyAll:        'All',
+    historyAriaSection:'Analysis history',
+    historyAriaDelete: 'Delete entire history',
+    historyAriaFilter: 'Filter history',
+    confidence:        'Confidence',
+    analysis:          'Analysis',
+    contextSection:    'Context & Limitations',
+    sourcesNote:       'Analysis based on AI knowledge — no source verification.',
+    copyBtn:           '⎘ Copy',
+    mdBtn:             '⬇ Markdown',
+    pdfBtn:            '🖨 PDF',
+    shareBtn:          '🔗 Share',
+    copied:            '✓ Copied',
+    linkCopied:        '✓ Link copied',
+    tooLong:           '✗ Too long',
+    copyErr:           '✗ Error',
+    loadingMsgs:       ['AI is analysing the claim …','Weighing the facts …','Including context …','Refining analysis …','Considering nuances …'],
+    errInvalidInput:   'Invalid input',
+    errNoKey:          'API key missing',
+    errNoKeyMsg:       'Please enter your key above.',
+    errApiKeyAlert:    'Please enter your API key first.',
+    errTimeout:        'Timeout',
+    errAborted:        'Cancelled',
+    errAbortedMsg:     'The analysis was cancelled.',
+    errGeneric:        'Error',
+    errUnknown:        'Unknown error.',
+    errEmpty:          'Please enter a claim or text.',
+    errTooShort:       'Text is too short. Please enter more.',
+    retryBtn:          '↻ Try again',
+    uiLangBtn:         '🇬🇧',
+    uiLangTitle:       'Auf Deutsch wechseln',
+    langAutoTitle:     'Analysis language: Auto (input language)',
+    langForcedTitle:   'Analysis language: English',
+    footerBold:        'Note:',
+    footerText:        ' This tool uses AI for analysis and does not replace journalistic research. AI can be wrong — always check original sources for important decisions.',
+    verdictExport:     'VERDICT',
+    claimsExport:      'INDIVIDUAL CLAIMS',
+    contextExport:     'CONTEXT',
+    mdTitle:           '# Fact-Checker Result',
+    mdVerdictKey:      '**Verdict:**',
+    mdConfKey:         '**Confidence:**',
+    mdClaimsHeader:    '## Individual Claims',
+    mdContextHeader:   '## Context',
+    mdFooter:          '_AI-powered analysis — not a substitute for journalistic research._',
+    historyLocale:     'en-GB',
+    fallbackStatus:    'uncertain',
+    fallbackVerdict:   'UNVERIFIABLE',
+    retryCountdown:    s => `↻ Try again (${s}s)`,
+    rateLimit:         s => `⏱ Please wait ${s}s …`,
+    charCountFn:       n => `${n.toLocaleString('en-GB')} characters`,
+    timeoutMsg:        s => `No response after ${s}s. Please try again.`,
+    errMaxChars:       (len, max) => `Text too long (${len} characters). Maximum: ${max.toLocaleString('en-GB')} characters.`,
+    streamFn:          n => `${n.toLocaleString('en-GB')} characters …`,
+    shortcutFn:        mac => mac ? '⌘+Enter to check' : 'Ctrl+Enter to check',
+  },
+};
+function getS() { return STRINGS[state?.uiLang] || STRINGS.de; }
+
+const SYSTEM_PROMPT_BASE_DE = `Du bist ein präziser, unparteiischer Faktenchecker. Der Nutzer gibt eine Behauptung oder einen Text ein. Analysiere ihn gründlich.
+
+Antworte NUR mit einem JSON-Objekt (kein Markdown, keine Backticks, kein erklärender Text davor oder danach):
+
+{
+  "verdict": "WAHR" | "FALSCH" | "TEILWEISE WAHR" | "NICHT VERIFIZIERBAR" | "MEINUNGSAUSSAGE",
+  "confidence": <Zahl 0-100>,
+  "summary": "<1-2 Sätze Kernaussage>",
+  "analysis": "<ausführliche Analyse, 3-6 Sätze>",
+  "claims": [{ "text": "<Einzelbehauptung>", "status": "wahr"|"falsch"|"fraglich"|"meinung", "note": "<kurze Erläuterung>" }],
+  "context": "<Kontext und Einschränkungen, 1-3 Sätze>",
+  "isOpinion": <true|false>
+}
+
+Regeln:
+- Sachlich, neutral, präzise
+- verdict und claims.status immer auf Deutsch (WAHR/FALSCH/TEILWEISE WAHR/NICHT VERIFIZIERBAR/MEINUNGSAUSSAGE bzw. wahr/falsch/fraglich/meinung)
+- 1-4 Einzelbehauptungen in claims
+- WICHTIG: Ausschließlich das JSON-Objekt zurückgeben`;
+
+const SYSTEM_PROMPT_AUTO_DE = SYSTEM_PROMPT_BASE_DE + `
+- Erkenne die Sprache des Eingabetexts und antworte in summary, analysis, claims.note und context in derselben Sprache`;
+
+const SYSTEM_PROMPT_DE = SYSTEM_PROMPT_BASE_DE + `
+- Antworte auf Deutsch`;
+
+const SYSTEM_PROMPT_BASE_EN = `You are a precise, impartial fact-checker. The user provides a claim or text. Analyse it thoroughly.
+
+Respond ONLY with a JSON object (no Markdown, no backticks, no explanatory text before or after):
+
+{
+  "verdict": "TRUE" | "FALSE" | "PARTIALLY TRUE" | "UNVERIFIABLE" | "OPINION",
+  "confidence": <number 0-100>,
+  "summary": "<1-2 sentence core statement>",
+  "analysis": "<detailed analysis, 3-6 sentences>",
+  "claims": [{ "text": "<individual claim>", "status": "true"|"false"|"uncertain"|"opinion", "note": "<brief explanation>" }],
+  "context": "<context and limitations, 1-3 sentences>",
+  "isOpinion": <true|false>
+}
+
+Rules:
+- Factual, neutral, precise
+- verdict and claims.status always in English (TRUE/FALSE/PARTIALLY TRUE/UNVERIFIABLE/OPINION and true/false/uncertain/opinion)
+- 1-4 individual claims in claims
+- IMPORTANT: Return ONLY the JSON object`;
+
+const SYSTEM_PROMPT_AUTO_EN = SYSTEM_PROMPT_BASE_EN + `
+- Detect the language of the input text and respond in summary, analysis, claims.note and context in that same language`;
+
+const SYSTEM_PROMPT_EN = SYSTEM_PROMPT_BASE_EN + `
+- Respond in English`;
+
+const VALID_VERDICTS = new Set([
+  'WAHR','FALSCH','TEILWEISE WAHR','NICHT VERIFIZIERBAR','MEINUNGSAUSSAGE',
+  'TRUE','FALSE','PARTIALLY TRUE','UNVERIFIABLE','OPINION',
+]);
+const VALID_STATUSES = new Set(['wahr','falsch','fraglich','meinung','true','false','uncertain','opinion']);
+
+const VERDICT_META = {
+  'WAHR':                { cls: 'verdict-true',      icon: '✓', badge: 'badge-true' },
+  'FALSCH':              { cls: 'verdict-false',     icon: '✗', badge: 'badge-false' },
+  'TEILWEISE WAHR':      { cls: 'verdict-partial',   icon: '◑', badge: 'badge-partial' },
+  'NICHT VERIFIZIERBAR': { cls: 'verdict-uncertain', icon: '?', badge: 'badge-uncertain' },
+  'MEINUNGSAUSSAGE':     { cls: 'verdict-opinion',   icon: '◎', badge: 'badge-opinion' },
+  'TRUE':                { cls: 'verdict-true',      icon: '✓', badge: 'badge-true' },
+  'FALSE':               { cls: 'verdict-false',     icon: '✗', badge: 'badge-false' },
+  'PARTIALLY TRUE':      { cls: 'verdict-partial',   icon: '◑', badge: 'badge-partial' },
+  'UNVERIFIABLE':        { cls: 'verdict-uncertain', icon: '?', badge: 'badge-uncertain' },
+  'OPINION':             { cls: 'verdict-opinion',   icon: '◎', badge: 'badge-opinion' },
+};
+
+// ── DOM Cache ───────────────────────────────────────────────────────────────
+let dom = null;
+function cacheDOM() {
+  dom = {
+    html:              document.documentElement,
+    // Single mode
+    singleMode:        document.getElementById('single-mode'),
+    claimInput:        document.getElementById('claim-input'),
+    checkBtn:          document.getElementById('check-btn'),
+    btnText:           document.getElementById('btn-text'),
+    btnIcon:           document.getElementById('btn-icon'),
+    spinner:           document.getElementById('spinner'),
+    abortBtn:          document.getElementById('abort-btn'),
+    clearBtn:          document.getElementById('clear-btn'),
+    charCount:         document.getElementById('char-count'),
+    shortcutHint:      document.getElementById('shortcut-hint'),
+    resultCard:        document.getElementById('result-card'),
+    resultInner:       document.getElementById('result-inner'),
+    rateLimitBanner:   document.getElementById('rate-limit-banner'),
+    // Comparison mode
+    comparisonMode:    document.getElementById('comparison-mode'),
+    claimInputA:       document.getElementById('claim-input-a'),
+    claimInputB:       document.getElementById('claim-input-b'),
+    charCountA:        document.getElementById('char-count-a'),
+    charCountB:        document.getElementById('char-count-b'),
+    compareBtn:        document.getElementById('compare-btn'),
+    compareBtnText:    document.getElementById('compare-btn-text'),
+    compareSpinner:    document.getElementById('compare-spinner'),
+    compareAbortBtn:   document.getElementById('compare-abort-btn'),
+    compareClearBtn:   document.getElementById('compare-clear-btn'),
+    resultCardA:       document.getElementById('result-card-a'),
+    resultCardB:       document.getElementById('result-card-b'),
+    resultInnerA:      document.getElementById('result-inner-a'),
+    resultInnerB:      document.getElementById('result-inner-b'),
+    // History
+    historySection:    document.getElementById('history-section'),
+    historyList:       document.getElementById('history-list'),
+    historyCount:      document.getElementById('history-count'),
+    historyClearBtn:   document.getElementById('history-clear-btn'),
+    filterBar:         document.getElementById('filter-bar'),
+    // Examples
+    examplesList:      document.getElementById('examples-list'),
+    addExampleBtn:     document.getElementById('add-example-btn'),
+    addExampleRow:     document.getElementById('add-example-row'),
+    addExampleInput:   document.getElementById('add-example-input'),
+    addExampleConfirm: document.getElementById('add-example-confirm'),
+    // API Key
+    apiKeyArea:        document.getElementById('api-key-area'),
+    apiKeyHeader:      document.getElementById('api-key-header'),
+    apiKeyInput:       document.getElementById('api-key-input'),
+    apiKeySaveBtn:     document.getElementById('api-key-save-btn'),
+    apiKeyDot:         document.getElementById('api-key-dot'),
+    apiKeyHint:        document.getElementById('api-key-hint'),
+    // Header
+    themeToggle:       document.getElementById('theme-toggle'),
+    langToggle:        document.getElementById('lang-toggle'),
+    uiLangToggle:      document.getElementById('ui-lang-toggle'),
+    comparisonToggle:  document.getElementById('comparison-toggle'),
+    // Translatable elements
+    eyebrowText:       document.getElementById('eyebrow-text'),
+    headerTagline:     document.getElementById('header-tagline'),
+    compLabelA:        document.getElementById('comp-label-a'),
+    compLabelB:        document.getElementById('comp-label-b'),
+    footerNote:        document.getElementById('footer-note'),
+  };
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+const state = {
+  abortController:  null,
+  compareAbort:     null,
+  timeoutId:        null,
+  abortReason:      null,
+  loadingInterval:  null,
+  lastResult:       null,
+  lastText:         null,
+  isRunning:        false,
+  isComparing:      false,
+  historyCache:     null,
+  historyFilter:    'ALL',
+  retryCount:       0,
+  retryInterval:    null,
+  lastRequestTime:  0,
+  comparisonActive: false,
+  langAuto:         true,
+  uiLang:           localStorage.getItem('fc_ui_lang') || 'de',
+};
+
+// ── Validation ───────────────────────────────────────────────────────────────
+function validateInput(text) {
+  const s = getS();
+  if (!text?.trim()) return s.errEmpty;
+  if (text.length < 5) return s.errTooShort;
+  if (text.length > CONFIG.CHAR_MAX) return s.errMaxChars(text.length, CONFIG.CHAR_MAX);
+  return null;
+}
+
+function validateResult(r) {
+  const s = getS();
+  if (!r || typeof r !== 'object' || Array.isArray(r))
+    throw new Error('API response is not a valid JSON object.');
+  if (!VALID_VERDICTS.has(r.verdict)) {
+    console.warn('[FC] Unknown verdict:', r.verdict, '→', s.fallbackVerdict);
+    r.verdict = s.fallbackVerdict;
+  }
+  if (typeof r.confidence !== 'number' || isNaN(r.confidence)) {
+    console.warn('[FC] Invalid confidence:', r.confidence, '→ 50');
+    r.confidence = 50;
+  }
+  if (!r.summary?.trim()) throw new Error('Required field "summary" missing.');
+  if (!r.analysis?.trim()) throw new Error('Required field "analysis" missing.');
+  if (!Array.isArray(r.claims)) { console.warn('[FC] claims not array → []'); r.claims = []; }
+  r.claims = r.claims
+    .filter(c => { const ok = c?.text && c?.note; if (!ok) console.warn('[FC] Claim skipped:', c); return ok; })
+    .map(c => ({ ...c, status: VALID_STATUSES.has(c.status) ? c.status : s.fallbackStatus }));
+  if (typeof r.context !== 'string') r.context = '';
+  if (typeof r.isOpinion !== 'boolean') r.isOpinion = r.verdict === 'MEINUNGSAUSSAGE' || r.verdict === 'OPINION';
+  return r;
+}
+
+// ── JSON extraction ──────────────────────────────────────────────────────────
+function extractJSON(str) {
+  str = str.trim();
+  try { return JSON.parse(str); } catch (e1) { console.warn('[FC] direkt:', e1.message); }
+  const stripped = str.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+  try { return JSON.parse(stripped); } catch (e2) { console.warn('[FC] strip:', e2.message); }
+  const m = stripped.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch (e3) { console.warn('[FC] regex:', e3.message); } }
+  throw new Error('KI-Antwort konnte nicht als JSON geparst werden. Bitte erneut versuchen.');
+}
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+function initTheme() {
+  dom.html.setAttribute('data-theme', localStorage.getItem('fc_theme') || '');
+  updateThemeBtn();
+}
+function toggleTheme() {
+  const c = dom.html.getAttribute('data-theme');
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const next = c === 'dark' ? 'light' : c === 'light' ? 'dark' : dark ? 'light' : 'dark';
+  dom.html.setAttribute('data-theme', next);
+  localStorage.setItem('fc_theme', next);
+  updateThemeBtn();
+}
+function updateThemeBtn() {
+  const t = dom.html.getAttribute('data-theme');
+  const dark = t === 'dark' || (t === '' && window.matchMedia('(prefers-color-scheme:dark)').matches);
+  dom.themeToggle.textContent = dark ? '☀' : '☾';
+}
+
+// ── UI Language ───────────────────────────────────────────────────────────────
+function initUiLang() {
+  state.uiLang = localStorage.getItem('fc_ui_lang') || 'de';
+  applyUiLang();
+}
+function toggleUiLang() {
+  state.uiLang = state.uiLang === 'de' ? 'en' : 'de';
+  localStorage.setItem('fc_ui_lang', state.uiLang);
+  applyUiLang();
+}
+function applyUiLang() {
+  const s = getS();
+  // Toggle button itself
+  dom.uiLangToggle.textContent = s.uiLangBtn;
+  dom.uiLangToggle.title = s.uiLangTitle;
+  // Static UI text
+  dom.eyebrowText.textContent = s.eyebrow;
+  dom.headerTagline.textContent = s.tagline;
+  dom.footerNote.textContent = '';
+  const footerStrong = document.createElement('strong');
+  footerStrong.textContent = s.footerBold;
+  dom.footerNote.appendChild(footerStrong);
+  dom.footerNote.appendChild(document.createTextNode(s.footerText));
+  dom.compLabelA.textContent = s.compLabelA;
+  dom.compLabelB.textContent = s.compLabelB;
+  // API key area
+  document.querySelector('.api-key-badge').textContent = s.apiKeyBadge;
+  dom.apiKeySaveBtn.textContent = s.apiKeySave;
+  document.querySelector('.api-key-security-note').textContent = s.apiKeySecNote;
+  // Input section
+  document.querySelector('label[for="claim-input"]').textContent = s.inputLabel;
+  dom.claimInput.placeholder = s.inputPlaceholder;
+  document.querySelector('.examples-title').textContent = s.examplesTitle;
+  dom.addExampleBtn.textContent = s.addExampleBtn;
+  dom.addExampleInput.placeholder = s.addExamplePh;
+  dom.addExampleConfirm.textContent = s.addExampleConfirm;
+  // Buttons
+  if (!state.isRunning) dom.btnText.textContent = s.checkBtn;
+  dom.clearBtn.textContent = s.clearBtn;
+  dom.abortBtn.textContent = s.abortBtn;
+  dom.abortBtn.setAttribute('aria-label', s.abortLabel);
+  // Comparison
+  dom.claimInputA.placeholder = s.compPhA;
+  dom.claimInputB.placeholder = s.compPhB;
+  if (!state.isComparing) dom.compareBtnText.textContent = s.bothCheck;
+  dom.compareClearBtn.textContent = s.clearBtn;
+  dom.compareAbortBtn.textContent = s.abortBtn;
+  dom.compareAbortBtn.setAttribute('aria-label', s.abortLabel);
+  // History
+  dom.historyClearBtn.textContent = s.historyDelete;
+  dom.historyClearBtn.setAttribute('aria-label', s.historyAriaDelete);
+  dom.historySection.setAttribute('aria-label', s.historyAriaSection);
+  dom.filterBar.setAttribute('aria-label', s.historyAriaFilter);
+  // Shortcut hint
+  dom.shortcutHint.textContent = s.shortcutFn(isMac());
+  // Re-render examples and history with new language
+  renderExamples();
+  renderHistory();
+}
+
+// ── Analysis Language ─────────────────────────────────────────────────────────
+function initLang() {
+  const stored = localStorage.getItem('fc_lang') || 'auto';
+  state.langAuto = stored === 'auto';
+  updateLangBtn();
+}
+function toggleLang() {
+  state.langAuto = !state.langAuto;
+  const forced = state.uiLang === 'en' ? 'en' : 'de';
+  localStorage.setItem('fc_lang', state.langAuto ? 'auto' : forced);
+  updateLangBtn();
+}
+function updateLangBtn() {
+  const s = getS();
+  dom.langToggle.title = state.langAuto ? s.langAutoTitle : s.langForcedTitle;
+  dom.langToggle.textContent = state.langAuto ? '🌐' : (state.uiLang === 'en' ? '🇬🇧' : '🇩🇪');
+  dom.langToggle.classList.toggle('active', !state.langAuto);
+  dom.langToggle.setAttribute('aria-pressed', state.langAuto ? 'true' : 'false');
+}
+function getSystemPrompt() {
+  if (state.uiLang === 'en') return state.langAuto ? SYSTEM_PROMPT_AUTO_EN : SYSTEM_PROMPT_EN;
+  return state.langAuto ? SYSTEM_PROMPT_AUTO_DE : SYSTEM_PROMPT_DE;
+}
+
+// ── API Key ───────────────────────────────────────────────────────────────────
+function loadApiKey() {
+  const key = localStorage.getItem('fc_api_key') || '';
+  if (key) {
+    dom.apiKeyInput.value = key; setKeyStatus(true);
+    dom.apiKeyArea.classList.remove('open');
+    dom.apiKeyHeader.setAttribute('aria-expanded','false');
+  } else {
+    setKeyStatus(false);
+    dom.apiKeyArea.classList.add('open');
+    dom.apiKeyHeader.setAttribute('aria-expanded','true');
+  }
+}
+function toggleApiKeyArea() {
+  const open = dom.apiKeyArea.classList.toggle('open');
+  dom.apiKeyHeader.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function saveApiKey() {
+  const key = dom.apiKeyInput.value.trim();
+  if (key) {
+    localStorage.setItem('fc_api_key', key); setKeyStatus(true);
+    setTimeout(() => { dom.apiKeyArea.classList.remove('open'); dom.apiKeyHeader.setAttribute('aria-expanded','false'); }, 600);
+  } else {
+    localStorage.removeItem('fc_api_key'); setKeyStatus(false);
+  }
+}
+function setKeyStatus(ok) {
+  const s = getS();
+  dom.apiKeyDot.className = 'api-key-status-dot' + (ok ? ' ok' : '');
+  dom.apiKeyHint.textContent = ok ? s.apiKeyOk : s.apiKeyMissing;
+}
+function getApiKey() {
+  return localStorage.getItem('fc_api_key') || dom.apiKeyInput.value.trim();
+}
+
+// ── Mac detection ─────────────────────────────────────────────────────────────
+function isMac() { return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent); }
+function initShortcutHint() { dom.shortcutHint.textContent = getS().shortcutFn(isMac()); }
+
+// ── Char counter ──────────────────────────────────────────────────────────────
+function updateCharCount(inputEl, countEl) {
+  const len = (inputEl || dom.claimInput).value.length;
+  const el = countEl || dom.charCount;
+  if (!len) { el.textContent = ''; el.className = 'char-count'; return; }
+  el.textContent = getS().charCountFn(len);
+  el.className = len > CONFIG.CHAR_MAX ? 'char-count error' : len > CONFIG.CHAR_WARN ? 'char-count warn' : 'char-count';
+  if (inputEl) inputEl.classList.toggle('invalid', len > CONFIG.CHAR_MAX);
+}
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+function checkRateLimit() {
+  const now = Date.now();
+  const diff = now - state.lastRequestTime;
+  if (diff < CONFIG.RATE_LIMIT_MS) {
+    const wait = Math.ceil((CONFIG.RATE_LIMIT_MS - diff) / 1000);
+    dom.rateLimitBanner.textContent = getS().rateLimit(wait);
+    dom.rateLimitBanner.classList.add('visible');
+    setTimeout(() => dom.rateLimitBanner.classList.remove('visible'), (CONFIG.RATE_LIMIT_MS - diff) + 100);
+    return false;
+  }
+  return true;
+}
+
+// ── Loading messages ──────────────────────────────────────────────────────────
+function startLoadingMessages() {
+  let i = 0;
+  const msgs = getS().loadingMsgs;
+  const el = document.getElementById('loading-msg');
+  if (!el) return;
+  el.textContent = msgs[0];
+  state.loadingInterval = setInterval(() => {
+    i = (i + 1) % msgs.length;
+    const e2 = document.getElementById('loading-msg');
+    if (e2) e2.textContent = msgs[i];
+  }, CONFIG.LOADING_INTERVAL);
+}
+function stopLoadingMessages() {
+  if (state.loadingInterval) { clearInterval(state.loadingInterval); state.loadingInterval = null; }
+}
+
+// ── UI state ──────────────────────────────────────────────────────────────────
+function setRunningUI(running) {
+  const s = getS();
+  dom.checkBtn.disabled = running;
+  dom.checkBtn.setAttribute('aria-busy', running ? 'true' : 'false');
+  dom.btnText.textContent = running ? s.checkingBtn : s.checkBtn;
+  dom.spinner.style.display = running ? 'block' : 'none';
+  dom.btnIcon.style.display = running ? 'none' : 'inline';
+  dom.abortBtn.style.display = running ? 'flex' : 'none';
+  state.isRunning = running;
+}
+function setComparingUI(running) {
+  const s = getS();
+  dom.compareBtn.disabled = running;
+  dom.compareBtnText.textContent = running ? s.checkingBtn : s.bothCheck;
+  dom.compareSpinner.style.display = running ? 'block' : 'none';
+  dom.compareAbortBtn.style.display = running ? 'flex' : 'none';
+  state.isComparing = running;
+}
+
+// ── Abort ─────────────────────────────────────────────────────────────────────
+function abortCheck() { state.abortReason = 'user'; state.abortController?.abort(); }
+function abortCompare() { state.abortReason = 'user'; state.compareAbort?.abort(); }
+
+// ── Core API call (generic) ───────────────────────────────────────────────────
+async function callAPI(text, signal) {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('NO_API_KEY');
+
+  // Prompt-Injection-Schutz: User-Input klar abgrenzen
+  const safeContent = `---BEGINN BEHAUPTUNG---\n${text}\n---ENDE BEHAUPTUNG---`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    signal,
+    body: JSON.stringify({
+      model: CONFIG.MODEL,
+      max_tokens: CONFIG.MAX_TOKENS,
+      temperature: CONFIG.TEMPERATURE,
+      stream: true,
+      system: getSystemPrompt(),
+      messages: [{ role: 'user', content: safeContent }],
+    }),
+  });
+
+  if (!response.ok) {
+    const isEN = state.uiLang === 'en';
+    let msg = `API error (${response.status})`;
+    try { const d = await response.json(); msg = d.error?.message || msg; } catch {}
+    if (response.status === 401) msg = isEN ? 'API key invalid or expired.' : 'API-Schlüssel ungültig oder abgelaufen.';
+    if (response.status === 429) msg = isEN ? 'Rate limit reached. Please wait a moment.' : 'Rate-Limit erreicht. Bitte kurz warten.';
+    if (response.status === 529) msg = isEN ? 'Anthropic API currently overloaded.' : 'Anthropic API momentan überlastet.';
+    throw new Error(msg);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', accumulatedText = '';
+  const previewEl = document.getElementById('loading-msg-bytes');
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const ev = JSON.parse(data);
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+          accumulatedText += ev.delta.text;
+          if (previewEl) previewEl.textContent = getS().streamFn(accumulatedText.length);
+        }
+      } catch (e) { console.warn('[FC] SSE parse:', e.message); }
+    }
+  }
+  return accumulatedText;
+}
+
+// ── Main check ────────────────────────────────────────────────────────────────
+async function runCheck() {
+  if (state.isRunning) return;
+  if (!checkRateLimit()) return;
+
+  const text = dom.claimInput.value.trim();
+  const inputErr = validateInput(text);
+  const s = getS();
+  if (inputErr) {
+    dom.claimInput.classList.add('invalid');
+    showResult(dom.resultCard, dom.resultInner, () => {
+      dom.resultInner.innerHTML = `<div class="error-box" role="alert"><strong>${esc(s.errInvalidInput)}</strong>${esc(inputErr)}</div>`;
+    });
+    return;
+  }
+  if (!getApiKey()) {
+    showResult(dom.resultCard, dom.resultInner, () => {
+      dom.resultInner.innerHTML = `<div class="error-box" role="alert"><strong>${esc(s.errNoKey)}</strong>${esc(s.errNoKeyMsg)}</div>`;
+    });
+    return;
+  }
+
+  dom.claimInput.classList.remove('invalid');
+  setRunningUI(true);
+  state.retryCount = 0;
+  state.lastRequestTime = Date.now();
+
+  showResult(dom.resultCard, dom.resultInner, () => {
+    dom.resultInner.innerHTML = loadingHTML();
+  });
+  startLoadingMessages();
+
+  state.abortController = new AbortController();
+  state.abortReason = null;
+  state.timeoutId = setTimeout(() => { state.abortReason = 'timeout'; state.abortController?.abort(); }, CONFIG.TIMEOUT_MS);
+
+  try {
+    const raw = await callAPI(text, state.abortController.signal);
+    const result = validateResult(extractJSON(raw));
+    state.lastResult = result; state.lastText = text;
+    renderResult(result, text, dom.resultInner);
+    saveToHistory(text, result);
+  } catch (err) {
+    if (state.abortReason === 'clear') return;
+    const { title, msg } = errorDetails(err, state.abortReason);
+    dom.resultInner.innerHTML = errorHTML(title, msg, text);
+    console.error('[FC]', err);
+  } finally {
+    stopLoadingMessages();
+    clearTimeout(state.timeoutId);
+    state.abortController = null;
+    setRunningUI(false);
+  }
+}
+
+// ── Comparison mode ───────────────────────────────────────────────────────────
+async function runComparison() {
+  if (state.isComparing) return;
+  const textA = dom.claimInputA.value.trim();
+  const textB = dom.claimInputB.value.trim();
+  const errA = validateInput(textA);
+  const errB = validateInput(textB);
+  const cs = getS();
+  if (errA || errB) {
+    if (errA) { dom.claimInputA.classList.add('invalid'); showResult(dom.resultCardA, dom.resultInnerA, () => { dom.resultInnerA.innerHTML = `<div class="error-box" role="alert"><strong>A: ${esc(cs.errInvalidInput)}</strong>${esc(errA)}</div>`; }); }
+    if (errB) { dom.claimInputB.classList.add('invalid'); showResult(dom.resultCardB, dom.resultInnerB, () => { dom.resultInnerB.innerHTML = `<div class="error-box" role="alert"><strong>B: ${esc(cs.errInvalidInput)}</strong>${esc(errB)}</div>`; }); }
+    return;
+  }
+  if (!getApiKey()) { alert(cs.errApiKeyAlert); return; }
+  if (!checkRateLimit()) return;
+
+  dom.claimInputA.classList.remove('invalid');
+  dom.claimInputB.classList.remove('invalid');
+  setComparingUI(true);
+  state.lastRequestTime = Date.now();
+
+  showResult(dom.resultCardA, dom.resultInnerA, () => { dom.resultInnerA.innerHTML = loadingHTML(); });
+  showResult(dom.resultCardB, dom.resultInnerB, () => { dom.resultInnerB.innerHTML = loadingHTML(); });
+
+  state.compareAbort = new AbortController();
+  state.abortReason = null;
+
+  try {
+    const [rawA, rawB] = await Promise.all([
+      callAPI(textA, state.compareAbort.signal),
+      callAPI(textB, state.compareAbort.signal),
+    ]);
+    const resA = validateResult(extractJSON(rawA));
+    const resB = validateResult(extractJSON(rawB));
+    renderResult(resA, textA, dom.resultInnerA);
+    renderResult(resB, textB, dom.resultInnerB);
+    saveToHistory(textA, resA);
+    saveToHistory(textB, resB);
+  } catch (err) {
+    const { title, msg } = errorDetails(err, state.abortReason);
+    const html = errorHTML(title, msg, null);
+    if (dom.resultInnerA.querySelector('.loading-state')) dom.resultInnerA.innerHTML = html;
+    if (dom.resultInnerB.querySelector('.loading-state')) dom.resultInnerB.innerHTML = html;
+    console.error('[FC compare]', err);
+  } finally {
+    state.compareAbort = null;
+    setComparingUI(false);
+  }
+}
+
+function toggleComparison() {
+  state.comparisonActive = !state.comparisonActive;
+  dom.singleMode.style.display = state.comparisonActive ? 'none' : 'block';
+  dom.comparisonMode.style.display = state.comparisonActive ? 'block' : 'none';
+  dom.comparisonToggle.classList.toggle('active', state.comparisonActive);
+  dom.comparisonToggle.setAttribute('aria-pressed', state.comparisonActive ? 'true' : 'false');
+}
+
+// ── Retry ─────────────────────────────────────────────────────────────────────
+function scheduleRetry(text, delay) {
+  state.retryCount++;
+  const btn = document.getElementById('retry-btn');
+  if (!btn) return;
+  const s = getS();
+  let cd = Math.ceil(delay / 1000);
+  btn.disabled = true;
+  btn.textContent = s.retryCountdown(cd);
+  if (state.retryInterval) clearInterval(state.retryInterval);
+  state.retryInterval = setInterval(() => {
+    cd--;
+    if (cd <= 0) { clearInterval(state.retryInterval); state.retryInterval = null; btn.disabled = false; btn.textContent = s.retryBtn; }
+    else btn.textContent = s.retryCountdown(cd);
+  }, 1000);
+}
+
+// ── Render result ─────────────────────────────────────────────────────────────
+const CLAIM_DOT = {
+  wahr: 'dot-green', falsch: 'dot-red', fraglich: 'dot-amber', meinung: 'dot-gray',
+  true: 'dot-green', false: 'dot-red', uncertain: 'dot-amber', opinion: 'dot-gray',
+};
+
+function renderResult(r, originalText, container) {
+  const meta = VERDICT_META[r.verdict] || VERDICT_META['NICHT VERIFIZIERBAR'];
+  const conf = Math.min(100, Math.max(0, Math.round(r.confidence)));
+  const barColor = conf >= 75 ? 'var(--green)' : conf >= 50 ? 'var(--amber)' : 'var(--red)';
+
+  const claimsHtml = r.claims.map(c => `
+    <div class="claim-item">
+      <div class="claim-header">
+        <div class="claim-dot ${CLAIM_DOT[c.status] || 'dot-blue'}"></div>
+        <div class="claim-text">${esc(c.text)}</div>
+      </div>
+      <div class="claim-note">${esc(c.note)}</div>
+    </div>`).join('');
+
+  const confFillId = 'conf-fill-' + Math.random().toString(36).slice(2,7);
+
+  const s = getS();
+  container.innerHTML = `
+    <div class="verdict-bar ${meta.cls}">
+      <span class="verdict-icon" aria-hidden="true">${meta.icon}</span>
+      <div>
+        <div class="verdict-label">${esc(r.verdict)}</div>
+        <div class="verdict-sublabel">${esc(r.summary)}</div>
+      </div>
+    </div>
+    <div class="confidence-row">
+      <span class="conf-label">${esc(s.confidence)}</span>
+      <div class="conf-bar-wrap" role="progressbar" aria-valuenow="${conf}" aria-valuemin="0" aria-valuemax="100">
+        <div class="conf-bar-fill" id="${confFillId}" style="width:0%;background:${barColor}"></div>
+      </div>
+      <span class="conf-pct">${conf}%</span>
+    </div>
+    <div class="section-title">${esc(s.analysis)}</div>
+    <div class="analysis-text">${esc(r.analysis)}</div>
+    ${claimsHtml ? `<div class="claims-list">${claimsHtml}</div>` : ''}
+    <div class="divider"></div>
+    <div class="section-title">${esc(s.contextSection)}</div>
+    <div class="analysis-text" style="font-size:14px">${esc(r.context)}</div>
+    <div class="sources-note" style="margin-top:1rem">${esc(s.sourcesNote)}</div>
+    <div class="result-actions">
+      <button class="action-btn" id="copy-btn-${confFillId}">${esc(s.copyBtn)}</button>
+      <button class="action-btn" id="md-btn-${confFillId}">${esc(s.mdBtn)}</button>
+      <button class="action-btn" id="pdf-btn-${confFillId}">${esc(s.pdfBtn)}</button>
+      <button class="action-btn" id="share-btn-${confFillId}">${esc(s.shareBtn)}</button>
+    </div>`;
+
+  setTimeout(() => { const f = document.getElementById(confFillId); if (f) f.style.width = conf + '%'; }, CONFIG.CONF_ANIM_DELAY);
+
+  document.getElementById(`copy-btn-${confFillId}`).addEventListener('click', () => doCopy('text', r, conf, `copy-btn-${confFillId}`));
+  document.getElementById(`md-btn-${confFillId}`).addEventListener('click', () => doCopy('md', r, conf, `md-btn-${confFillId}`));
+  document.getElementById(`pdf-btn-${confFillId}`).addEventListener('click', () => printResult());
+  document.getElementById(`share-btn-${confFillId}`).addEventListener('click', () => shareResult(r, originalText, `share-btn-${confFillId}`));
+}
+
+// ── Copy / Export ─────────────────────────────────────────────────────────────
+function doCopy(mode, r, conf, btnId) {
+  const s = getS();
+  const text = mode === 'md' ? buildMarkdown(r, conf) : buildPlainText(r, conf);
+  navigator.clipboard.writeText(text)
+    .then(() => flashBtn(btnId, s.copied, 'success'))
+    .catch(e => { console.error('[FC] Clipboard:', e); flashBtn(btnId, s.copyErr, 'failure'); });
+}
+
+function flashBtn(id, label, cls) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  const orig = btn.textContent;
+  btn.textContent = label; btn.classList.add(cls);
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove(cls); }, CONFIG.COPY_FEEDBACK_MS);
+}
+
+function printResult() { window.print(); }
+
+function shareResult(r, text, btnId) {
+  const s = getS();
+  try {
+    const payload = JSON.stringify({ r, t: text });
+    if (payload.length > CONFIG.SHARE_MAX_CHARS) { flashBtn(btnId, s.tooLong, 'failure'); return; }
+    const encoded = btoa(encodeURIComponent(payload));
+    const url = location.href.split('#')[0] + '#r=' + encoded;
+    navigator.clipboard.writeText(url)
+      .then(() => flashBtn(btnId, s.linkCopied, 'success'))
+      .catch(() => { prompt('Link:', url); });
+  } catch (e) { console.error('[FC] share:', e); flashBtn(btnId, s.copyErr, 'failure'); }
+}
+
+function loadFromURL() {
+  const hash = location.hash;
+  if (!hash.startsWith('#r=')) return;
+  try {
+    const payload = JSON.parse(decodeURIComponent(atob(hash.slice(3))));
+    if (!payload.r || !payload.t) return;
+    const result = validateResult(payload.r);
+    dom.claimInput.value = payload.t;
+    updateCharCount();
+    state.lastResult = result; state.lastText = payload.t;
+    showResult(dom.resultCard, dom.resultInner, () => renderResult(result, payload.t, dom.resultInner));
+    history.replaceState(null, '', location.pathname);
+  } catch (e) { console.warn('[FC] URL-Load:', e.message); }
+}
+
+function buildPlainText(r, conf) {
+  const s = getS();
+  const lines = [`${s.verdictExport}: ${r.verdict}`, `${s.confidence}: ${conf}%`, '', r.summary, '', s.analysis.toUpperCase(), r.analysis];
+  if (r.claims.length) { lines.push('', s.claimsExport); r.claims.forEach(c => lines.push(`[${c.status.toUpperCase()}] ${c.text} — ${c.note}`)); }
+  lines.push('', s.contextExport, r.context);
+  return lines.join('\n');
+}
+
+function buildMarkdown(r, conf) {
+  const s = getS();
+  const lines = [s.mdTitle, '', `${s.mdVerdictKey} ${r.verdict}  `, `${s.mdConfKey} ${conf}%`, '', `> ${r.summary}`, '', `## ${s.analysis}`, r.analysis];
+  if (r.claims.length) { lines.push('', s.mdClaimsHeader); r.claims.forEach(c => lines.push(`- **[${c.status}]** ${c.text}  \n  _${c.note}_`)); }
+  lines.push('', s.mdContextHeader, r.context, '', '---', s.mdFooter);
+  return lines.join('\n');
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+function getHistory() {
+  if (state.historyCache !== null) return state.historyCache;
+  try { state.historyCache = JSON.parse(localStorage.getItem('fc_history') || '[]'); }
+  catch (e) { console.warn('[FC] History read:', e.message); state.historyCache = []; }
+  return state.historyCache;
+}
+function persistHistory(h) {
+  state.historyCache = h;
+  try { localStorage.setItem('fc_history', JSON.stringify(h)); }
+  catch (e) { console.warn('[FC] History write:', e.message); }
+}
+function saveToHistory(text, result) {
+  const h = getHistory();
+  h.unshift({ id: Date.now(), text: text.length > 80 ? text.slice(0,80)+'…' : text, fullText: text, verdict: result.verdict, confidence: Math.round(result.confidence), summary: result.summary, timestamp: new Date().toISOString(), full: result });
+  if (h.length > CONFIG.HISTORY_MAX) h.pop();
+  persistHistory(h);
+  renderHistory();
+}
+function clearHistory() {
+  state.historyCache = null;
+  try { localStorage.removeItem('fc_history'); } catch (e) { console.warn('[FC] History clear:', e.message); }
+  renderHistory();
+}
+
+function renderHistory() {
+  const s = getS();
+  const all = getHistory();
+  if (!all.length) { dom.historySection.classList.remove('visible'); renderFilterBar([]); return; }
+  dom.historySection.classList.add('visible');
+  dom.historySection.querySelector('.history-title').childNodes[0].textContent = s.historyTitle + ' ';
+  renderFilterBar(all);
+  const filtered = state.historyFilter === 'ALL' ? all : all.filter(i => i.verdict === state.historyFilter);
+  dom.historyCount.textContent = filtered.length;
+  dom.historyList.innerHTML = filtered.map((item) => {
+    const timeStr = new Date(item.timestamp).toLocaleTimeString(s.historyLocale, { hour: '2-digit', minute: '2-digit' });
+    const meta = VERDICT_META[item.verdict] || VERDICT_META['NICHT VERIFIZIERBAR'];
+    return `
+      <div class="history-item" data-history-idx="${all.indexOf(item)}" role="button" tabindex="0"
+           aria-label="${esc(item.verdict)}: ${esc(item.text)} — ${timeStr}">
+        <span class="history-verdict-badge ${meta.badge}" aria-hidden="true">${esc(item.verdict)}</span>
+        <span class="history-text">${esc(item.text)}</span>
+        <span class="history-conf" aria-hidden="true">${item.confidence}%</span>
+        <span class="history-time" aria-hidden="true">${timeStr}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderFilterBar(history) {
+  const s = getS();
+  const counts = {};
+  history.forEach(i => { counts[i.verdict] = (counts[i.verdict] || 0) + 1; });
+  const filters = [{ key: 'ALL', label: s.historyAll, count: history.length }, ...Object.entries(counts).map(([k,v]) => ({ key: k, label: k, count: v }))];
+  dom.filterBar.innerHTML = filters.map(f => `
+    <button class="filter-chip ${state.historyFilter === f.key ? 'active' : ''}" data-filter="${esc(f.key)}"
+            aria-pressed="${state.historyFilter === f.key}">
+      ${esc(f.label)} <span style="opacity:0.6">(${f.count})</span>
+    </button>`).join('');
+}
+
+// ── Examples ──────────────────────────────────────────────────────────────────
+function getCustomExamples() {
+  try { return JSON.parse(localStorage.getItem('fc_examples') || '[]'); } catch { return []; }
+}
+function saveCustomExamples(arr) { localStorage.setItem('fc_examples', JSON.stringify(arr)); }
+
+function renderExamples() {
+  const s = getS();
+  const defaults = state.uiLang === 'en' ? DEFAULT_EXAMPLES_EN : DEFAULT_EXAMPLES_DE;
+  const custom = getCustomExamples();
+  const all = [...defaults.map(t => ({ text: t, custom: false })), ...custom.map(t => ({ text: t, custom: true }))];
+  const delLabel = state.uiLang === 'en' ? 'Delete example' : 'Beispiel löschen';
+  dom.examplesList.innerHTML = all.map((ex, idx) => `
+    <span class="example-chip" role="button" tabindex="0"
+          data-example="${esc(ex.text)}" data-custom="${ex.custom}" data-idx="${idx - defaults.length}">
+      ${esc(ex.text)}
+      ${ex.custom ? `<span class="chip-del" data-del-idx="${idx - defaults.length}" aria-label="${delLabel}" role="button" tabindex="0">✕</span>` : ''}
+    </span>`).join('');
+}
+
+function addCustomExample() {
+  const val = dom.addExampleInput.value.trim();
+  if (!val || val.length < 5) return;
+  const arr = getCustomExamples();
+  if (arr.includes(val)) return;
+  arr.push(val);
+  saveCustomExamples(arr);
+  dom.addExampleInput.value = '';
+  dom.addExampleRow.classList.remove('visible');
+  renderExamples();
+}
+
+function deleteCustomExample(idx) {
+  const arr = getCustomExamples();
+  arr.splice(idx, 1);
+  saveCustomExamples(arr);
+  renderExamples();
+}
+
+// ── Show result (animation reset) ─────────────────────────────────────��──────
+function showResult(card, inner, fn) {
+  card.style.display = 'none';
+  card.style.animation = 'none';
+  void card.offsetHeight;
+  card.style.animation = 'fadeUp 0.3s ease';
+  card.style.display = 'block';
+  fn();
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function loadingHTML() {
+  const msgs = getS().loadingMsgs;
+  return `<div class="loading-state">
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+    <span id="loading-msg">${msgs[0]}</span>
+    <span class="stream-preview" id="loading-msg-bytes"></span>
+  </div>`;
+}
+
+function errorDetails(err, reason) {
+  const s = getS();
+  if (err?.name === 'AbortError') {
+    if (reason === 'timeout') return { title: s.errTimeout, msg: s.timeoutMsg(CONFIG.TIMEOUT_MS / 1000) };
+    return { title: s.errAborted, msg: s.errAbortedMsg };
+  }
+  if (err?.message === 'NO_API_KEY') return { title: s.errNoKey, msg: s.errNoKeyMsg };
+  return { title: s.errGeneric, msg: err?.message || s.errUnknown };
+}
+
+function errorHTML(title, msg, retryText) {
+  const s = getS();
+  const hasRetry = retryText && state.retryCount < CONFIG.RETRY_MAX;
+  const html = `<div class="error-box" role="alert"><strong>${esc(title)}</strong>${esc(msg)}${hasRetry ? `<br><button class="retry-btn" id="retry-btn">${s.retryBtn}</button>` : ''}</div>`;
+  // Attach event listener after render (next microtask) to avoid inline onclick
+  if (hasRetry) {
+    setTimeout(() => {
+      const btn = document.getElementById('retry-btn');
+      if (btn) btn.addEventListener('click', () => { dom.claimInput.value = retryText; runCheck(); });
+    }, 0);
+  }
+  return html;
+}
+
+function clearAll() {
+  if (state.isRunning) { state.abortReason = 'clear'; state.abortController?.abort(); }
+  stopLoadingMessages(); clearTimeout(state.timeoutId);
+  state.timeoutId = null; state.lastResult = null; state.lastText = null;
+  dom.claimInput.value = ''; dom.claimInput.classList.remove('invalid');
+  dom.resultCard.style.display = 'none';
+  updateCharCount(); setRunningUI(false);
+}
+
+function clearComparison() {
+  if (state.isComparing) { state.abortReason = 'clear'; state.compareAbort?.abort(); }
+  dom.claimInputA.value = ''; dom.claimInputB.value = '';
+  dom.claimInputA.classList.remove('invalid'); dom.claimInputB.classList.remove('invalid');
+  dom.resultCardA.style.display = 'none'; dom.resultCardB.style.display = 'none';
+  updateCharCount(dom.claimInputA, dom.charCountA); updateCharCount(dom.claimInputB, dom.charCountB);
+  setComparingUI(false);
+}
+
+// ── Event Listeners ───────────────────────────────────────────────────────────
+function initEventListeners() {
+  // Single mode
+  dom.checkBtn.addEventListener('click', runCheck);
+  dom.clearBtn.addEventListener('click', clearAll);
+  dom.abortBtn.addEventListener('click', abortCheck);
+  dom.claimInput.addEventListener('input', () => updateCharCount());
+  dom.claimInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (isMac() ? e.metaKey : e.ctrlKey)) runCheck();
+  });
+
+  // Comparison mode
+  dom.compareBtn.addEventListener('click', runComparison);
+  dom.compareClearBtn.addEventListener('click', clearComparison);
+  dom.compareAbortBtn.addEventListener('click', abortCompare);
+  dom.claimInputA.addEventListener('input', () => updateCharCount(dom.claimInputA, dom.charCountA));
+  dom.claimInputB.addEventListener('input', () => updateCharCount(dom.claimInputB, dom.charCountB));
+
+  // Header toggles
+  dom.themeToggle.addEventListener('click', toggleTheme);
+  dom.langToggle.addEventListener('click', toggleLang);
+  dom.uiLangToggle.addEventListener('click', toggleUiLang);
+  dom.comparisonToggle.addEventListener('click', toggleComparison);
+
+  // API Key
+  dom.apiKeyHeader.addEventListener('click', toggleApiKeyArea);
+  dom.apiKeyHeader.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); toggleApiKeyArea(); } });
+  dom.apiKeySaveBtn.addEventListener('click', saveApiKey);
+  dom.apiKeyInput.addEventListener('keydown', e => { if (e.key==='Enter') saveApiKey(); });
+
+  // Examples — Event Delegation
+  dom.examplesList.addEventListener('click', e => {
+    const del = e.target.closest('.chip-del');
+    if (del) { e.stopPropagation(); deleteCustomExample(parseInt(del.dataset.delIdx, 10)); return; }
+    const chip = e.target.closest('.example-chip');
+    if (!chip) return;
+    dom.claimInput.value = chip.dataset.example || chip.textContent.trim();
+    updateCharCount(); dom.claimInput.focus();
+  });
+  dom.examplesList.addEventListener('keydown', e => {
+    if (e.key==='Enter'||e.key===' ') { e.preventDefault(); e.target.closest('.example-chip')?.click(); }
+  });
+  dom.addExampleBtn.addEventListener('click', () => dom.addExampleRow.classList.toggle('visible'));
+  dom.addExampleConfirm.addEventListener('click', addCustomExample);
+  dom.addExampleInput.addEventListener('keydown', e => { if (e.key==='Enter') addCustomExample(); });
+
+  // History — Event Delegation
+  dom.historyList.addEventListener('click', e => {
+    const item = e.target.closest('.history-item');
+    if (!item) return;
+    const idx = parseInt(item.dataset.historyIdx, 10);
+    if (isNaN(idx)) return;
+    const entry = getHistory()[idx];
+    if (!entry) { console.warn('[FC] History not found:', idx); return; }
+    dom.claimInput.value = entry.fullText || entry.text.replace(/…$/,'');
+    updateCharCount(); state.lastResult = entry.full;
+    if (state.comparisonActive) { toggleComparison(); }
+    showResult(dom.resultCard, dom.resultInner, () => renderResult(entry.full, entry.fullText || entry.text, dom.resultInner));
+  });
+  dom.historyList.addEventListener('keydown', e => {
+    if (e.key==='Enter'||e.key===' ') { e.preventDefault(); e.target.closest('.history-item')?.click(); }
+  });
+
+  // History filter — Event Delegation
+  dom.filterBar.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.closest('.filter-chip')?.click(); }
+  });
+  dom.filterBar.addEventListener('click', e => {
+    const chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    state.historyFilter = chip.dataset.filter;
+    renderHistory();
+  });
+
+  // History clear
+  dom.historyClearBtn.addEventListener('click', clearHistory);
+  dom.historyClearBtn.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); clearHistory(); } });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+cacheDOM();
+initEventListeners();
+initTheme();
+initUiLang();   // must run before initLang so getS() works
+initLang();
+loadApiKey();
+initShortcutHint();
+renderExamples();
+renderHistory();
+loadFromURL();
+</script>
+</body>
+</html>
