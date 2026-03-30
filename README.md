@@ -2,6 +2,8 @@
 
 Ein datenschutzfreundlicher, browserbasierter Faktenprüfer auf Basis von Claude AI. Keine Serverinstallation, keine Datenübertragung außer direkt zur Anthropic-API.
 
+**[🚀 Live Demo](https://danielenki420.github.io/faktenchecker/)** — eigenen Anthropic API-Key mitbringen
+
 ![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)
 
 ---
